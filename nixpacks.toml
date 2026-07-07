@@ -1,0 +1,13 @@
+# Railway / Nixpacks config for the Telegram bot only.
+# Installs bot-only deps (ignores desktop/build deps in requirements.txt).
+providers = ["python"]
+
+[phases.install]
+cmds = [
+  "python -m venv --copies /opt/venv",
+  ". /opt/venv/bin/activate && pip install --upgrade pip",
+  ". /opt/venv/bin/activate && pip install -r requirements-bot.txt",
+]
+
+[start]
+cmd = ". /opt/venv/bin/activate && python tg_bot.py"

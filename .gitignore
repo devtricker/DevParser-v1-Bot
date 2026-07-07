@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Telethon session
+*.session
+*.session-journal
+
+# Bot runtime data (keys/licenses/results) - keep secret, do not commit
+bot_licenses.json
+results_*.txt
+results.txt
+proxies_alive_*.txt
+jp_proxies_working.txt
+dh_key.dat
+error.txt
+emoji_ids_output.txt
+
+# Desktop/exe build artifacts
+build/
+dist/
+*.spec
+
+# OS
+Thumbs.db
+.DS_Store

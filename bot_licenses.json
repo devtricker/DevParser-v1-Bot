@@ -1,0 +1,29 @@
+{
+  "keys": {
+    "DPV1-4978-BE9C-71ED": {
+      "days": 30,
+      "created": 1783425171,
+      "note": "",
+      "redeemed_by": null,
+      "redeemed_at": null
+    },
+    "DPV1-C352-E672-D4BD": {
+      "days": 1,
+      "created": 1783425200,
+      "note": "",
+      "redeemed_by": "8385312944",
+      "redeemed_at": 1783425217,
+      "suspended": false
+    }
+  },
+  "users": {
+    "8385312944": {
+      "expiry": 1783511617,
+      "name": "\ud83d\udc09 \ud835\ude3c\ud835\ude49\ud835\ude4f\ud835\ude3c\ud835\ude4d\ud835\ude40\ud835\ude4e \ud83d\udc09",
+      "username": "AntaresOP",
+      "key": "DPV1-C352-E672-D4BD",
+      "activated": 1783425217,
+      "status": "active"
+    }
+  }
+}
