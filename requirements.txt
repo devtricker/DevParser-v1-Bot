@@ -1,5 +1,5 @@
 telethon
+pysocks
 requests
 urllib3
-pysocks
-cryptg
+cryptography

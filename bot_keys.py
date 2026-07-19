@@ -44,15 +44,19 @@ def _make_key() -> str:
     return "DPV1-" + "-".join(raw[i:i + 4] for i in range(0, 12, 4))
 
 
-def generate_key(days: int = 30, note: str = "") -> str:
-    """Create a new unredeemed key valid for `days` after it is redeemed. days<=0 => lifetime."""
+def generate_key(days: int = 30, hours: int = 0, minutes: int = 0, note: str = "") -> str:
+    """Create a key. days>0 or hours>0 or minutes>0. days<=0 with no hrs/mins => lifetime."""
     with _lock:
         data = _load()
         key = _make_key()
         while key in data["keys"]:
             key = _make_key()
+        total_seconds = (days * 86400) + (hours * 3600) + (minutes * 60)
         data["keys"][key] = {
             "days": int(days),
+            "hours": int(hours),
+            "minutes": int(minutes),
+            "seconds": int(total_seconds),
             "created": int(time.time()),
             "note": note,
             "redeemed_by": None,
@@ -76,8 +80,14 @@ def redeem_key(key: str, user_id, name: str = "", username: str = "") -> dict:
             return {"ok": False, "message": "This key is already used by another user."}
 
         now = int(time.time())
+        seconds = int(info.get("seconds", 0))
         days = int(info.get("days", 0))
-        expiry = 0 if days <= 0 else now + days * 86400
+        if seconds > 0:
+            expiry = now + seconds
+        elif days <= 0:
+            expiry = 0  # lifetime
+        else:
+            expiry = now + days * 86400
 
         info["redeemed_by"] = str(user_id)
         info["redeemed_at"] = now
