@@ -155,13 +155,23 @@ def get_engine(uid):
 
 def get_state(uid):
     if uid not in user_states:
-        user_states[uid] = {}
+        user_states[uid] = {"num_fmt": "abbr"}  # "abbr" or "full"
+    elif "num_fmt" not in user_states[uid]:
+        user_states[uid]["num_fmt"] = "abbr"
     return user_states[uid]
 
 def fmt(n):
     if n >= 1_000_000: return f"{n/1_000_000:.1f}M"
     if n >= 1_000: return f"{n/1_000:.1f}K"
     return str(n)
+
+def fmt_val(n, uid=None):
+    """Format number based on user preference: 'abbr'=29.4K or 'full'=29400"""
+    if uid is not None:
+        st = get_state(uid)
+        if st.get("num_fmt") == "full":
+            return f"{n:,}"
+    return fmt(n)
 
 # ==================== DORK GENERATOR SESSION ====================
 DEFAULT_KEYWORDS = [
@@ -600,6 +610,7 @@ def settings_buttons():
          Button.inline("🛰 Protocol", b"settings_protocol")],
         [Button.inline("🔨 Filters", b"settings_filters"),
          Button.inline("📥 Output", b"settings_output")],
+        [Button.inline("🔢 Num Format", b"settings_numfmt")],
         [Button.inline("🔙 Back", b"menu_home")],
     ]
 
@@ -890,6 +901,8 @@ async def on_callback(event):
 
         elif data == "menu_settings":
             if not must_license(uid): return await reject_unlicensed(event, uid)
+            st = get_state(uid)
+            nf = "29.4K (Short)" if st.get("num_fmt","abbr") == "abbr" else "29,400 (Full)"
             txt = pe(f"⚙️ <b>Settings</b>\n\n"
                      f"🌐 Engine: <b>{engine.search_engine.upper()}</b>\n"
                      f"📄 Pages/Dork: <b>{engine.pages_per_dork}</b>\n"
@@ -897,6 +910,7 @@ async def on_callback(event):
                      f"🎯 Country: <b>{engine.country.upper()}</b>\n"
                      f"🔋 Auto-Scrape: <b>{'ON' if engine.auto_scrape else 'OFF'}</b>\n"
                      f"🛰 Protocol: <b>{engine.proxy_protocol.upper()}</b>\n"
+                     f"🔢 Num Format: <b>{nf}</b>\n"
                      f"🔨 PF: <b>{'ON' if engine.param_filter else 'OFF'}</b> | "
                      f"DD: <b>{'ON' if engine.domain_dedup else 'OFF'}</b> | "
                      f"AP: <b>{'ON' if engine.antipublic else 'OFF'}</b>")
@@ -932,7 +946,7 @@ async def on_callback(event):
                 size = os.path.getsize(fname)
                 with open(fname, 'r', encoding='utf-8') as f:
                     lines = len(f.readlines())
-                txt = pe(f"📊 <b>Results</b>\n\n🔗 URLs: <b>{fmt(lines)}</b>\n📥 Size: <b>{size/1024:.1f} KB</b>")
+                txt = pe(f"📊 <b>Results</b>\n\n🔗 URLs: <b>{fmt_val(lines, uid)}</b>\n📥 Size: <b>{size/1024:.1f} KB</b>")
                 btns = [
                     [Button.inline("📥 Download Results", b"results_download")],
                     [Button.inline("🗑 Clear Results", b"results_clear")],
@@ -1262,7 +1276,8 @@ async def on_callback(event):
                         dom_set = set()
                         for b in base_set:
                             for d in active_doms:
-                                dom_set.add(f"site:{d} {b}")
+                                d_clean = d.lstrip('.')
+                                dom_set.add(f"{b} site:{d_clean}")
                         base_set = dom_set
                         
                 all_dorks.update(base_set)
@@ -1404,7 +1419,7 @@ async def on_callback(event):
 
         elif data == "kws_seeds":
             state['waiting_for'] = 'kws_seeds'
-            await event.edit(pe("✏️ <b>Edit Seed Keywords</b>\n\nSend comma-separated seeds.\nExample: <code>shopping, checkout, payment</code>"),
+            await event.edit(pe("✏️ <b>Edit Seed Keywords</b>\n\n📤 <b>Upload .txt file</b> (one seed per line or comma-separated)\n📝 <b>OR</b> send text below (comma-separated)\n\nExample: <code>shopping, checkout, payment</code>"),
                              buttons=[[Button.inline("🔙 Cancel", b"menu_kw_scraper")]], parse_mode='html')
         elif data == "kws_depth":
             state['waiting_for'] = 'kws_depth'
@@ -2029,6 +2044,27 @@ async def on_callback(event):
             await event.edit(pe(f"📥 <b>Output Format</b>\nCurrent: <b>{engine.output_ext}</b>\nSend .txt, .csv etc:"),
                              buttons=[[Button.inline("🔙 Cancel", b"menu_settings")]], parse_mode='html')
 
+        elif data == "settings_numfmt":
+            st = get_state(uid)
+            cur = st.get("num_fmt", "abbr")
+            new_val = "full" if cur == "abbr" else "abbr"
+            st["num_fmt"] = new_val
+            lbl = "29,400 (Full)" if new_val == "full" else "29.4K (Short)"
+            await event.answer(pe(f"✅ Num Format: {lbl}"))
+            nf = "29.4K (Short)" if new_val == "abbr" else "29,400 (Full)"
+            await event.edit(pe(f"⚙️ <b>Settings</b>\n\n"
+                                f"🌐 Engine: <b>{engine.search_engine.upper()}</b>\n"
+                                f"📄 Pages/Dork: <b>{engine.pages_per_dork}</b>\n"
+                                f"⚡ Threads: <b>{engine.threads}</b>\n"
+                                f"🎯 Country: <b>{engine.country.upper()}</b>\n"
+                                f"🔋 Auto-Scrape: <b>{'ON' if engine.auto_scrape else 'OFF'}</b>\n"
+                                f"🛰 Protocol: <b>{engine.proxy_protocol.upper()}</b>\n"
+                                f"🔢 Num Format: <b>{nf}</b>\n"
+                                f"🔨 PF: <b>{'ON' if engine.param_filter else 'OFF'}</b> | "
+                                f"DD: <b>{'ON' if engine.domain_dedup else 'OFF'}</b> | "
+                                f"AP: <b>{'ON' if engine.antipublic else 'OFF'}</b>"),
+                             buttons=settings_buttons(), parse_mode='html')
+
         # ── PARSE ──
 
         elif data in ("parse_start", "parse_start_noproxy"):
@@ -2081,7 +2117,7 @@ async def on_callback(event):
                             try:
                                 txt = pe(f"▶️ <b>Parsing...</b>\n\n"
                                          f"🧠 Progress: <b>{d}/{total}</b>\n"
-                                         f"🔗 URLs: <b>{fmt(res)}</b>\n"
+                                         f"🔗 URLs: <b>{fmt_val(res, uid)}</b>\n"
                                          f"⏰ ETA: <b>{h:02d}:{mm:02d}:{sd:02d}</b>\n"
                                          f"⚡ Speed: <b>{dpm:.0f} d/m</b>\n"
                                          f"🛰 Proxies: <b>{alive}</b>")
@@ -2118,7 +2154,7 @@ async def on_callback(event):
                         engine._writer_thread.join(timeout=5)
                     del state['running']
                     res = len(engine.results)
-                    _safe_send(uid, pe(f"✅ <b>COMPLETE!</b>\n🔗 <b>{fmt(res)}</b> URLs.\n/results to download."))
+                    _safe_send(uid, pe(f"✅ <b>COMPLETE!</b>\n🔗 <b>{fmt_val(res, uid)}</b> URLs.\n/results to download."))
                 except Exception as e:
                     import traceback, sys; print(f"[PARSER] CRASH: {e}"); sys.stdout.flush(); traceback.print_exc(); sys.stdout.flush()
                     try: _safe_send(uid, pe(f"❌ <b>Parser error:</b> {e}"))
@@ -2148,11 +2184,11 @@ async def on_callback(event):
             await bot.send_file(
                 uid, fname,
                 caption=pe(f"👀 <b>Live Results</b>\n\n"
-                           f"🔗 <b>{fmt(len(res))}</b> URLs extracted so far\n"
+                           f"🔗 <b>{fmt_val(len(res), uid)}</b> URLs extracted so far\n"
                            f"Click 👀 See Result again for updated results."),
                 parse_mode='html'
             )
-            await event.answer(pe(f"📤 Sent! {fmt(len(res))} URLs"))
+            await event.answer(pe(f"📤 Sent! {fmt_val(len(res), uid)} URLs"))
             # Schedule deletion after 60s
             def _del(path):
                 time.sleep(60)
@@ -2168,7 +2204,7 @@ async def on_callback(event):
         elif data == "parse_stop":
             state['running'] = False; engine.stop()
             await event.answer(pe("🛑 Stopped!"))
-            await event.edit(pe(f"🛑 <b>STOPPED!</b>\n🔗 {fmt(len(engine.results))} URLs."),
+            await event.edit(pe(f"🛑 <b>STOPPED!</b>\n🔗 {fmt_val(len(engine.results), uid)} URLs."),
                              buttons=main_buttons(), parse_mode='html')
 
         # ── RESULTS ──
@@ -2197,7 +2233,7 @@ async def on_callback(event):
 async def handle_file(event):
     uid = event.sender_id; state = get_state(uid); engine = get_engine(uid)
     waiting = state.get('waiting_for', '')
-    if waiting not in ('dorks', 'proxy_file') and not waiting.startswith('dorkfile_') and waiting != 'kwc_input' and waiting != 'vuln_file':
+    if waiting not in ('dorks', 'proxy_file') and not waiting.startswith('dorkfile_') and waiting != 'kwc_input' and waiting != 'vuln_file' and waiting != 'kws_seeds':
         await event.reply(pe("ℹ️ Use menu to upload."), buttons=main_buttons(), parse_mode='html'); return
     try:
         path = await event.download_media()
@@ -2238,6 +2274,11 @@ async def handle_file(event):
             vs = get_vuln_session(uid)
             vs.vuln_urls = urls; state.pop('waiting_for', None)
             await event.reply(pe(f"✅ <b>{len(urls)}</b> URLs loaded from file!"), buttons=build_vuln_dash(vs), parse_mode='html')
+        elif waiting == 'kws_seeds':
+            seeds = [s.strip().lower() for s in content.replace('\n', ',').split(',') if s.strip()]
+            if not seeds: return await event.reply(pe("❌ No seeds found in file!"))
+            ss = get_kw_scraper(uid); ss.seeds = seeds; state.pop('waiting_for', None)
+            await event.reply(pe(f"✅ <b>{len(seeds)}</b> seeds loaded from file!"), buttons=build_kw_scraper(ss), parse_mode='html')
     except Exception as e:
         await event.reply(pe(f"❌ Error: {e}"))
 
@@ -2379,14 +2420,18 @@ async def handle_text(event):
 
 @bot.on(events.NewMessage(pattern='/settings'))
 async def cmd_settings(event):
-    engine = get_engine(event.sender_id)
+    uid = event.sender_id
+    engine = get_engine(uid)
+    st = get_state(uid)
+    nf = "29.4K (Short)" if st.get("num_fmt","abbr") == "abbr" else "29,400 (Full)"
     txt = pe(f"⚙️ <b>Settings</b>\n\n"
              f"🌐 Engine: <b>{engine.search_engine.upper()}</b>\n"
              f"📄 Pages/Dork: <b>{engine.pages_per_dork}</b>\n"
              f"⚡ Threads: <b>{engine.threads}</b>\n"
              f"🎯 Country: <b>{engine.country.upper()}</b>\n"
              f"🔋 Auto: <b>{'ON' if engine.auto_scrape else 'OFF'}</b>\n"
-             f"🛰 Protocol: <b>{engine.proxy_protocol.upper()}</b>")
+             f"🛰 Protocol: <b>{engine.proxy_protocol.upper()}</b>\n"
+             f"🔢 Num Format: <b>{nf}</b>")
     await event.reply(txt, buttons=settings_buttons(), parse_mode='html')
 
 @bot.on(events.NewMessage(pattern='/proxies'))
@@ -2414,9 +2459,9 @@ async def cmd_status(event):
         d, t = engine.dorks_done, len(engine.dorks); r = len(engine.results)
         dpm = engine.get_dpm(); eta = engine.get_eta()
         m, s = divmod(int(eta), 60); h, mm = divmod(m, 60)
-        txt = pe(f"▶️ <b>RUNNING</b>\n🧠 {d}/{t} | 🔗 {fmt(r)} URLs | ⚡ {dpm:.0f} d/m | ETA: {h:02d}:{mm:02d}:{s:02d}")
+        txt = pe(f"▶️ <b>RUNNING</b>\n🧠 {d}/{t} | 🔗 {fmt_val(r, uid)} URLs | ⚡ {dpm:.0f} d/m | ETA: {h:02d}:{mm:02d}:{s:02d}")
     else:
-        txt = pe(f"🛑 <b>IDLE</b>\n🧠 {fmt(len(engine.dorks))} dorks | 🔗 {fmt(len(engine.results))} URLs")
+        txt = pe(f"🛑 <b>IDLE</b>\n🧠 {fmt_val(len(engine.dorks), uid)} dorks | 🔗 {fmt_val(len(engine.results), uid)} URLs")
     await event.reply(txt, parse_mode='html')
 
 @bot.on(events.NewMessage(pattern='/stop'))
