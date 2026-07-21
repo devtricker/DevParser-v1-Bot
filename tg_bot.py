@@ -13,6 +13,7 @@ except RuntimeError:
     asyncio.set_event_loop(asyncio.new_event_loop())
 
 from telethon import TelegramClient, events, Button
+from telethon.errors import FloodWaitError
 from telethon.tl.types import MessageEntityCustomEmoji
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -122,21 +123,42 @@ def pe(text):
 bot = TelegramClient(os.path.join(SESSION_DIR, 'devparser_bot'), API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 _bot_loop = bot.loop  # Main event loop reference for thread-safe calls
 
-# ----- Thread-safe coroutine scheduling -----
+# ─── Flood-aware edit/send ───────────────────────────────
+_flood_until = 0  # timestamp when flood ban expires
+_flood_lock = threading.Lock()
+
 def _safe_edit(chat_id, msg_id, text, buttons=None):
-    """Schedule edit_message from any thread. Won't block."""
+    """Schedule edit_message with FloodWait respect. Silently skips when flood-banned."""
     async def _do():
+        global _flood_until
+        with _flood_lock:
+            if time.time() < _flood_until:
+                return  # Still flood-banned, silently skip
         try:
             await bot.edit_message(chat_id, msg_id, text, buttons=buttons, parse_mode='html')
+        except FloodWaitError as e:
+            wait = e.seconds + 3
+            print(f"[safe_edit] FloodWait {e.seconds}s → cooling for {wait}s")
+            with _flood_lock:
+                _flood_until = time.time() + wait
         except Exception as e:
             print(f"[safe_edit] {e}")
     _bot_loop.call_soon_threadsafe(lambda: asyncio.ensure_future(_do()))
 
 def _safe_send(chat_id, text):
-    """Schedule send_message from any thread."""
+    """Schedule send_message with FloodWait respect."""
     async def _do():
+        global _flood_until
+        with _flood_lock:
+            if time.time() < _flood_until:
+                return
         try:
             await bot.send_message(chat_id, text, parse_mode='html')
+        except FloodWaitError as e:
+            wait = e.seconds + 3
+            print(f"[safe_send] FloodWait {e.seconds}s → cooling for {wait}s")
+            with _flood_lock:
+                _flood_until = time.time() + wait
         except Exception as e:
             print(f"[safe_send] {e}")
     _bot_loop.call_soon_threadsafe(lambda: asyncio.ensure_future(_do()))
@@ -2107,9 +2129,13 @@ async def on_callback(event):
                     last_text = [""]
                     def update_status():
                         while state.get('running'):
-                            time.sleep(5) # Increase sleep to 5s to prevent FloodWait limits
+                            time.sleep(5)
                             if not state.get('running'): break
-                            
+
+                            # Skip updates while flood-banned to avoid piling up
+                            if time.time() < _flood_until:
+                                continue
+
                             d = engine.dorks_done
                             res = len(engine.results); alive = engine.get_alive_proxies()
                             eta = engine.get_eta()
