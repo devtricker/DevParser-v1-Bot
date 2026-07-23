@@ -8,9 +8,9 @@ import os, sys, time, re, random, threading, queue, asyncio
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 try:
-    asyncio.get_event_loop()
+    asyncio.get_running_loop()
 except RuntimeError:
-    asyncio.set_event_loop(asyncio.new_event_loop())
+    pass
 
 from telethon import TelegramClient, events, Button
 from telethon.errors import FloodWaitError
@@ -21,7 +21,7 @@ from bot_engine import DorkEngine, COUNTRY_CODES
 from bot_keys import (is_admin, generate_key, redeem_key, get_license, list_keys, ADMIN_IDS,
                       list_users, suspend_user, unsuspend_user, delete_user)
 from kw_engine import clean_keywords, KWScraper, LANGUAGES as KW_LANGUAGES, COUNTRIES as KW_COUNTRIES
-from vuln_engine import VulnScanner, dump_database
+from vuln_engine import VulnScanner, scan_url_fast, dump_database
 
 CONTACT = "@devtronex"
 
@@ -672,8 +672,43 @@ async def cmd_start(event):
     uid = event.sender_id
     get_engine(uid); get_state(uid)
     lic = get_license(uid)
-    lic_line = "👑 <b>Admin</b>" if lic.get("admin") else (
-        "✅ <b>Licensed</b>" if lic.get("valid") else "🔒 <b>No license</b> — get a key")
+    if lic.get("admin"):
+        lic_line = "👑 <b>Admin Access</b>"
+        lic_block = f"🔑 Status: {lic_line}"
+    elif lic.get("valid"):
+        if lic.get("lifetime"):
+            lic_line = "♾️ <b>Lifetime License</b>"
+        else:
+            lic_line = f"✅ <b>Licensed</b> ({lic.get('days_left', 0)} days left)"
+        lic_block = f"🔑 Status: {lic_line}"
+    elif lic.get("suspended"):
+        lic_block = (
+            f"🚫 <b>LICENSE SUSPENDED</b>\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"⚠️ <b>Reason:</b> Account suspended by admin\n"
+            f"🔒 <b>Access:</b> All features locked\n"
+            f"🪪 <b>Key:</b> <code>{lic.get('key','')}</code>\n"
+            f"💬 <b>Action:</b> Contact {CONTACT} to appeal"
+        )
+    else:
+        # No license at all (or expired)
+        if lic.get("expiry"):
+            lic_block = (
+                f"⏰ <b>LICENSE EXPIRED</b>\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"❌ <b>Status:</b> Your license has expired\n"
+                f"🔒 <b>Access:</b> All features locked\n"
+                f"🪪 <b>Old Key:</b> <code>{lic.get('key','')}</code>\n"
+                f"💬 <b>Action:</b> Get a new key from {CONTACT}"
+            )
+        else:
+            lic_block = (
+                f"🔒 <b>NO LICENSE FOUND</b>\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"❌ <b>Status:</b> You don't have a license yet\n"
+                f"🔒 <b>Access:</b> All features locked\n"
+                f"💬 <b>Action:</b> Get a key from {CONTACT}"
+            )
     txt = pe(f"🚀 <b>DevParser v2</b> 🚀\n\n"
              f"Welcome, <b>{event.sender.first_name}</b>!\n"
              f"I convert Google Dorks into targeted URLs.\n\n"
@@ -685,8 +720,7 @@ async def cmd_start(event):
              f"🛡 SQLi/XSS/LFI Vuln Scanner\n"
              f"⚙️ Smart Filters + Dedup\n"
              f"📄 Export results as file\n\n"
-             f"🔑 Status: {lic_line}\n\n"
-             f"<b>🔑 GET YOUR LICENSE KEY FROM {CONTACT}</b>\n"
+             f"{lic_block}\n\n"
              f"ℹ️ Use the menu or /help")
     await event.reply(txt, buttons=main_buttons(uid), parse_mode='html')
 
@@ -2129,10 +2163,10 @@ async def on_callback(event):
                     last_text = [""]
                     def update_status():
                         while state.get('running'):
-                            time.sleep(5)
+                            time.sleep(20)  # 20s interval to avoid FloodWait
                             if not state.get('running'): break
 
-                            # Skip updates while flood-banned to avoid piling up
+                            # Skip updates while flood-banned
                             if time.time() < _flood_until:
                                 continue
 
